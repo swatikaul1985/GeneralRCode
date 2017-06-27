@@ -1,0 +1,31 @@
+
+###############################################################################################
+
+#Now that we have our sample, data, let's look at optimizing the decision threshold by the apex of the ROC curve:
+
+
+
+library(Epi) # To help us vizualize the apex of the ROC curve 
+
+opt<-ROC(gbmProbs[, "yes"], forGBM.Test$WonFlag ,plot = c("ROC"))
+
+#We can see the apex quite clearly. 
+
+
+#Next, using the same data, let's extract a different threshold optimizing for the F-measure
+
+library(ROCR) # Used to calculate the F-measure
+predROCR = prediction(gbmProbs[, "yes"], forGBM.Test$WonFlag)
+perfROCR = performance(predROCR,"f") #calculates the f measures across cutoffs
+
+# Plot the output, add a red line at the maximum
+plot(perfROCR) 
+abline(v=PRFMAX,col="red")
+
+
+prfmx<-max(perfROCR@y.values[[1]],na.rm=T) # extracts the max F measure
+PRFMAX<-min(perfROCR@x.values[[1]][perfROCR@y.values[[1]]==prfmx],na.rm=T)
+print(PRFMAX)
+
+
+# threshold: 0.3586712

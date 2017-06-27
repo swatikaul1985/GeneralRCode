@@ -1,0 +1,30 @@
+iterators: Provides Iterator Construct for R
+
+Support for iterators, which allow a programmer to traverse through all the elements of a vector, list, or other collection of data.
+
+Version:	1.0.8
+Depends:	R (= 2.5.0), utils
+Suggests:	RUnit
+Published:	2015-10-13
+Author:	Rich Calaway [cre], Revolution Analytics [aut, cph], Steve Weston [aut]
+Maintainer:	Rich Calaway <richcala at microsoft.com>
+License:	Apache License (== 2.0)
+NeedsCompilation:	no
+CRAN checks:	iterators results
+Downloads:
+
+Reference manual:	iterators.pdf
+Vignettes:	iterators Manual
+Writing Custom Iterators
+Package source:	iterators_1.0.8.tar.gz
+Windows binaries:	r-devel: iterators_1.0.8.zip, r-release: iterators_1.0.8.zip, r-oldrel: iterators_1.0.8.zip
+OS X Mavericks binaries:	r-release: iterators_1.0.8.tgz, r-oldrel: iterators_1.0.8.tgz
+Old sources:	iterators archive
+Reverse dependencies:
+
+Reverse depends:	clustvarsel, doFuture, doMC, doMPI, doParallel, doRedis, doSNOW, GA, hdlm, itertools, MetaQC, MonoInc, parboost, SDDE, sms, spatial.tools
+Reverse imports:	acc, boostr, combiter, doRNG, ecospat, factorcpt, foreach, GSODR, hyperSMURF, iLaplace, Information, intercure, iterpc, itertools2, ldamatch, lgcp, LPR, mistral, neuroim, paleoTS, PhyInformR, pinbasic, polywog, prospectr, randomUniformForest, rcdk, RcmdrPlugin.FuzzyClust, resemble, rpubchem, scidb, semsfa, SGP, shazam, simr, spacom, spatsurv, ssa, tigger, turboEM, unsystation, YaleToolkit
+Reverse suggests:	assignPOP, DEoptim, dplR, EGRETci, GeneralTree, liqueueR, plyr, PortfolioAnalytics, solarius
+Linking:
+
+Please use the canonical form https://CRAN.R-project.org/package=iterators to link to this page.
