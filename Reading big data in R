@@ -1,2 +1,15 @@
 system.time(List <- lapply(1:20000, function(x) read.csv("train.csv", nrows=1, skip = sample(RowsInCSV,1), header=T,stringsAsFactors = FALSE))) 
             DF = do.call(rbind, List))
+
+
+# only select numeric columns in R
+nums <- sapply(data, is.numeric)
+
+keep = names(nums[nums== TRUE])
+
+data.num <- data[,..keep]
+
+
+# only select numeric colimns in R
+library("dplyr")
+select_if(x, is.numeric)
