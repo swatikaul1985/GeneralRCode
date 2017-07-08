@@ -1,0 +1,11 @@
+With GradeRanges As (
+  SELECT FLOOR(Score/5.00)*5     As GradeFloor, 
+         FLOOR(Score/5.00)*5 + 4 As GradeCeiling
+  FROM TableName
+)
+SELECT GradeFloor,
+       CONCAT(GradeFloor, ' to ', GradeCeiling) AS GradeRange,
+       COUNT(*) AS [Grade Count]
+FROM GradeRanges
+GROUP BY GradeFloor, CONCAT(GradeFloor, ' to ', GradeCeiling)
+ORDER BY GradeFloor
