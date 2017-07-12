@@ -1,0 +1,178 @@
+
+rm(list=ls(all=T))
+install.packages("FSelector",repos = c("http://rstudio.org/_packages","http://cran.rstudio.com"))
+install.packages("ROSE",repos = c("http://rstudio.org/_packages","http://cran.rstudio.com"))
+install.packages("rpart",repos = c("http://rstudio.org/_packages","http://cran.rstudio.com"))
+install.packages("rattle",dependencies = T)
+install.packages("rpart.plot",repos = c("http://rstudio.org/_packages","http://cran.rstudio.com"))
+install.packages("RColorBrewer",repos = c("http://rstudio.org/_packages","http://cran.rstudio.com"))
+
+
+
+require(mlr); require(InformationValue)
+require(dplyr)
+library(mice); library(VIM); library(ROSE); library(caret)
+library(rpart);library(rattle);library(rpart.plot);library(RColorBrewer)
+data <- fread("df_final.csv",na.strings = c(""," ","?","NA",NA))
+data$CloudCustomerGuid <- NULL
+data <- Filter(function(x)(length(unique(x))>1), data)
+data$new_category <- ifelse(data$new_category == "CurrentTopCustomer",0,1)
+data<- data %>% mutate_if(sapply(X = data, FUN = function(X) length(unique(na.omit(X)))<40),as.factor)
+
+# Remove usage columns
+data$Decliner.Trailing.6.Months.Commodity.Paid.Usage <- NULL
+data$Decliner.Paid.Usage.Commodity.. <- NULL
+data$Decliner.Trailing.6.Months.Normalized.Usage <- NULL
+data$Decliner.Trailing.6.Months.Paid.Usage <- NULL
+
+# Correlation of numerical columns
+View(as.data.frame(cor(data[sapply(data, is.numeric)])))
+prop.table(table(data$new_category))
+summarizeColumns(data)[,"nlevs"]
+
+# Find important variables using INFORMATION GAIN
+data$new_vertical <- as.factor(data$new_vertical)
+train.task <- makeClassifTask(data = data,target = "new_category")
+var_imp <- generateFilterValuesData(train.task, method = c("information.gain"))
+plotFilterValues(var_imp,feat.type.cols = TRUE)
+View(var_imp$data)
+
+# Model building
+frml <- "new_category ~ Rolling.Decliner.Trailing.Quarter + new_vertical + Total.Inflection.Trailing.Term.Utilization + IsPremier + new_area + Tenure.to.Inflection + Rolling.Decliner.Prior.Trailing.Quarter + Total.Inflection.Term.Commitment"
+fit <- rpart(frml, data=data, method="class") #, control=rpart.control(minsplit=3, cp=0))
+fancyRpartPlot(fit)
+
+# Find the important categorical variables 
+factor_vars <- sapply(data,is.factor) %>% which()
+all_iv <- data.frame(VARS=factor_vars, IV=numeric(length(factor_vars)), STRENGTH=character(length(factor_vars)), stringsAsFactors = F)
+all_iv$VARS<- rownames(all_iv)
+rownames(all_iv) <- NULL
+for (factor_var in all_iv$VARS){
+  all_iv[all_iv$VARS == factor_var, "IV"] <- InformationValue::IV(X=data[, factor_var], Y=data$new_category)
+  all_iv[all_iv$VARS == factor_var, "STRENGTH"] <- attr(InformationValue::IV(X=data[, factor_var], Y=data$new_category), "howgood")
+}
+all_iv <- all_iv[order(-all_iv$IV), ]
+View(all_iv[all_iv$STRENGTH != "Not Predictive",])
+
+# Lets plot the missing values
+mice_plot <- aggr(data, col=c('navyblue','yellow'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(data), cex.axis=.9,
+                    gap=5, ylab=c("Missing data","Pattern"))
+
+
+# Train - Test split
+A <- data[data$new_category == 0,]
+B <- data[data$new_category == 1,]
+set.seed(222)
+smp_size0 <- floor(0.75 * nrow(A))
+smp_size1 <- floor(0.75 * nrow(B))
+
+train_ind0 <- sample(seq_len(nrow(A)), size = smp_size0)
+train_ind1 <- sample(seq_len(nrow(B)), size = smp_size1)
+
+train <- rbind(A[train_ind0, ], B[train_ind1, ])
+test <- rbind(A[-train_ind0, ], B[-train_ind1, ])
+
+#SMOTE sampling
+data.rose <- ROSE(new_category ~ ., data = train, seed = 1)$train
+table(data.rose$new_category)
+
+  
+# Model again
+library(mlr)
+
+#create task
+train.task <- makeClassifTask(data = train,target = "new_category")
+test.task <- makeClassifTask(data=test,target = "new_category")
+
+#remove zero variance features
+train.task <- removeConstantFeatures(train.task)
+test.task <- removeConstantFeatures(test.task)
+
+#SMOTE
+train.smote <- smote(train.task,rate = 15,nn = 5)
+#undersampling 
+train.under <- undersample(train.task,rate = 0.09) #keep only 10% of majority class
+table(getTaskTargets(train.under))
+
+#oversampling
+train.over <- oversample(train.task,rate=11.675) #make minority class 15 times
+table(getTaskTargets(train.over))
+
+#naive Bayes
+naive_learner <- makeLearner("classif.naiveBayes",predict.type = "response")
+naive_learner$par.vals <- list(laplace = 1)
+#CV
+folds <- makeResampleDesc("CV",iters=10,stratify = TRUE)
+fun_cv <- function(a){
+  crv_val <- resample(naive_learner,a,folds,measures = list(acc,tpr,tnr,fpr,fp,fn))
+  crv_val$aggr
+}
+fun_cv (train.task)
+fun_cv(train.under)
+fun_cv(train.over)
+fun_cv(train.smote)
+
+nB_model <- train(naive_learner, train.over)
+nB_predict <- predict(nB_model,test.task)
+nB_prediction <- nB_predict$data$response
+confusionMatrix(as.factor(test$new_category) ,nB_prediction)
+
+#xgboost
+set.seed(2002)
+xgb_learner <- makeLearner("classif.xgboost",predict.type = "response")
+xgb_learner$par.vals <- list(
+  objective = "binary:logistic",
+  eval_metric = "error",
+  nrounds = 150,
+  print.every.n = 50
+)
+
+
+xg_ps <- makeParamSet( 
+  makeIntegerParam("max_depth",lower=3,upper=10),
+  makeNumericParam("lambda",lower=0.05,upper=0.5),
+  makeNumericParam("eta", lower = 0.01, upper = 0.5),
+  makeNumericParam("subsample", lower = 0.50, upper = 1),
+  makeNumericParam("min_child_weight",lower=2,upper=10),
+  makeNumericParam("colsample_bytree",lower = 0.50,upper = 0.80)
+)
+
+#define search function
+rancontrol <- makeTuneControlRandom(maxit = 5L) #do 5 iterations
+
+#5 fold cross validation
+set_cv <- makeResampleDesc("CV",iters = 5L,stratify = TRUE)
+
+#tune parameters
+xgb_tune <- tuneParams(learner = xgb_learner, task = train.task, resampling = set_cv, measures = list(acc,tpr,tnr,fpr,fp,fn), par.set = xg_ps, control = rancontrol)
+
+#set optimal parameters
+xgb_new <- setHyperPars(learner = xgb_learner, par.vals = xgb_tune$x)
+
+#train model
+xgmodel <- train(xgb_new, train.task)
+predict.xg <- predict(xgmodel, test.task)
+xg_prediction <- predict.xg$data$response
+confusionMatrix(d_test$income_level,xg_prediction)
+
+
+
+library(arules)
+library(arulesViz)
+aa <- which(duplicated(data) | duplicated(data[nrow(data):1, ])[nrow(data):1])
+data<- data %>% mutate_if(sapply(X = data, FUN = function(X) length(unique(na.omit(X)))>1),as.factor)
+trans <- as(data,"transactions")
+itemLabels(trans)
+
+
+rules <- apriori(trans, parameter = list(sup = 0.01, conf = 0.05, target="rules"),appearance = list(rhs =c("new_category=0","new_category=1"),default = "lhs"))
+rules<-sort(rules, decreasing=TRUE,by="confidence")
+xyz <- head(sort(rules, by="lift"), n=25)
+summary(rules)
+#inspect(rules)
+
+plot(head(sort(rules, by="lift"), 30),
+     method="graph", control=list(cex=.7))
+
